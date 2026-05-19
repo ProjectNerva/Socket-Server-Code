@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
     }
 
     // bind the socket to its local address
-    int bindStatus = bind(serverSd, (struct sockaddr*) &servAddr, sizeof(servAddr)); // ignore error
+    int bindStatus = ::bind(serverSd, (struct sockaddr*) &servAddr, sizeof(servAddr)); // ignore error
 
     if (bindStatus < 0)
     {
