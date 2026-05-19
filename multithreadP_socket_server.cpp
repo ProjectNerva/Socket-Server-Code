@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     memset(&serverAddress.sin_zero, 0, sizeof(serverAddress.sin_zero));
 
     // bind the socket
-    if ((bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1))
+    if ((::bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1))
     {
         perror("bind error");
         exit(-1);
