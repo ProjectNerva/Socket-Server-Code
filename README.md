@@ -8,7 +8,7 @@ A collection of C++ TCP socket server programs exploring progressively more comp
 |------|-------------|
 | `chat_socket_server.cpp` | Interactive chat server — takes a port argument, accepts one client, bidirectional messaging with session stats |
 | `multiSC_socket_server.cpp` | Multi-client server using `std::thread` — listens on port 8080, spawns a thread per client and echoes messages back |
-| `multithreadP_socket_server.cpp` | Full chatroom server using pthreads — broadcasts messages to all connected clients, color-coded output, named users, chat history saved on exit |
+| `multithreadP_socket_server.cpp` | Full chatroom server using pthreads — one thread per client, mutex-protected shared state, relays messages to all other connected clients, color-coded output, named users, chat history saved on exit |
 
 ## Client-Server Pairing
 
@@ -49,7 +49,7 @@ Accepts multiple clients concurrently. Echoes each message back to the sender.
 ```bash
 ./multithreadP_socket_server 8080
 ```
-Full multi-user chatroom. Broadcasts all messages to every connected client. Press Ctrl+C to shut down and save chat history to `test_ChatHistory/`.
+Full multi-user chatroom. Each client gets its own thread, and the shared client list and chat history are protected with mutex locks, so users can join, chat, and leave at the same time. Each message is relayed to every other connected client (messages are capped at 199 characters). Press Ctrl+C to shut down and save chat history to `test_ChatHistory/`.
 
 ## Requirements
 
