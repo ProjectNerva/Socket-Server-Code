@@ -11,6 +11,7 @@
 #include <fstream>
 #include <signal.h> // clean-up operations before termination
 #include <mutex>
+#include <algorithm>
 
 #define MAX_LEN 200
 #define DIRECTORY_PATH "test_ChatHistory"
@@ -25,7 +26,6 @@ struct clientInfo {
     int id;
     string name;
     int socket;
-    pthread_t thread;
 };
 
 vector<clientInfo> clients;
@@ -34,17 +34,18 @@ string norm_color = "\033[0m"; // normal color
 string error_color = "\033[31m"; // error color
 string success_color = "\033[32m";
 string colors[] = {"\033[32m", "\033[33m", "\033[34m", "\033[35m","\033[36m"};
-pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER, cout_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER, cout_mutex = PTHREAD_MUTEX_INITIALIZER, history_mutex = PTHREAD_MUTEX_INITIALIZER;
 int seed = 0;
 
 // function definition
 void set_name(int id, char name[]);
 string color(int code);
 void shared_print(string str, bool endLine); // synchronization of cout statements (?)
-void handleSignal(int signal);
+void *handleSignal(void *arg);
 int broadcastMessage(string message, int sender_id);
 int broadcastMessage(int num, int sender_id);
 void endConnection(int id);
+void addHistory(string message);
 void *handleClient(void *arg);
 void saveChatHistory(string directoryPath, vector<string> txt); // TODO
 string getCurrentTime();
@@ -59,7 +60,18 @@ int main(int argc, char *argv[])
 
     int PORT = atoi(argv[1]);
 
-    signal(SIGINT, handleSignal); // Ctrl C bind; signal handler
+    // block Ctrl C in every thread and wait for it in its own thread instead,
+    // so shutdown runs as normal code and not inside a signal handler
+    sigset_t signalSet;
+    sigemptyset(&signalSet);
+    sigaddset(&signalSet, SIGINT);
+    pthread_sigmask(SIG_BLOCK, &signalSet, NULL);
+
+    pthread_t signalThread;
+    pthread_create(&signalThread, NULL, handleSignal, NULL);
+    pthread_detach(signalThread);
+
+    signal(SIGPIPE, SIG_IGN); // sending to a client that already left shouldn't kill the server
 
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -105,7 +117,7 @@ int main(int argc, char *argv[])
 
     sockaddr_in client;
     int clientSocket;
-    unsigned int len = sizeof(sockaddr_in); // 16 (?/)
+    socklen_t len = sizeof(sockaddr_in); // 16 (?/)
 
     cout << "Connected to chatroom!" << endl;
     cout << colors[NUM_COLORS-1] << " ======== Welcome to Chatroom ======== " << endl << norm_color;
@@ -120,17 +132,25 @@ int main(int argc, char *argv[])
         }
 
         seed++;
-        pthread_t clientThread;
+
+        // each thread gets its own copy so it never points into the clients vector,
+        // which moves around in memory when people join and leave
+        clientInfo *clientData = new clientInfo{seed, string("Anonymous"), clientSocket};
+
         pthread_mutex_lock(&clients_mutex);
-        // clientInfo clientData={seed, string("Anonymous"), clientSocket, clientThread};
-        // clients.push_back( clientData );
-        clients.push_back( (clientInfo){seed, string("Anonymous"), clientSocket, clientThread} );
+        clients.push_back(*clientData);
         pthread_mutex_unlock(&clients_mutex);
 
-        pthread_create(&clients.back().thread, NULL, handleClient, &clients.back());
+        pthread_t clientThread;
+        if (pthread_create(&clientThread, NULL, handleClient, clientData) != 0)
+        {
+            perror("thread error");
+            endConnection(clientData->id);
+            delete clientData;
+            continue;
+        }
+        pthread_detach(clientThread); // never joined, so free its resources when it ends
     }
-
-    saveChatHistory(DIRECTORY_PATH, history_txt);
 
     close(serverSocket);
     return 0;
@@ -138,6 +158,7 @@ int main(int argc, char *argv[])
 
 void set_name(int id, char name[])
 {
+    pthread_mutex_lock(&clients_mutex);
     for (int i = 0; i < clients.size(); i++)
     {
         if (clients[i].id == id)
@@ -146,6 +167,7 @@ void set_name(int id, char name[])
             break;
         }
     }
+    pthread_mutex_unlock(&clients_mutex);
 }
 
 string color(int code)
@@ -161,18 +183,32 @@ void shared_print(string str, bool endLine = true)
     pthread_mutex_unlock(&cout_mutex);
 }
 
-void handleSignal(int signal)
+void *handleSignal(void *arg)
 {
+    sigset_t signalSet;
+    sigemptyset(&signalSet);
+    sigaddset(&signalSet, SIGINT);
+
+    int signal;
+    sigwait(&signalSet, &signal); // sleeps until Ctrl C
+
     shared_print("Server shutting down...");
-    saveChatHistory(DIRECTORY_PATH, history_txt);
+
+    // copy so client threads can't change the history while it's being written
+    pthread_mutex_lock(&history_mutex);
+    vector<string> history_copy = history_txt;
+    pthread_mutex_unlock(&history_mutex);
+
+    saveChatHistory(DIRECTORY_PATH, history_copy);
     shared_print(success_color + "Chat history saved..." + norm_color);
-    exit(0);
+    _exit(0); // skip global destructors while client threads may still be running
 }
 
 int broadcastMessage(string message, int sender_id)
 {
-    char temp[MAX_LEN];
-    strcpy(temp, message.c_str());
+    // every message is sent as exactly MAX_LEN bytes, cut short if it's too long
+    char temp[MAX_LEN] = {0};
+    strncpy(temp, message.c_str(), MAX_LEN - 1);
     pthread_mutex_lock(&clients_mutex);
     for (int i = 0; i < clients.size(); i++)
     {
@@ -211,7 +247,6 @@ void endConnection(int id)
         if (clients[i].id == id)
         {
             close(clients[i].socket);
-            pthread_cancel(clients[i].thread);
             clients.erase(clients.begin() + i);
             break;
         }
@@ -220,15 +255,29 @@ void endConnection(int id)
     pthread_mutex_unlock(&clients_mutex);
 }
 
+void addHistory(string message)
+{
+    pthread_mutex_lock(&history_mutex);
+    history_txt.push_back(message);
+    pthread_mutex_unlock(&history_mutex);
+}
+
 void *handleClient(void *arg)
 {
     clientInfo *client = (clientInfo *)arg;
     int clientSocket = client->socket;
     int id = client->id;
+    delete client; // done with this thread's copy
     char name[MAX_LEN], buffer[MAX_LEN];
 
-    // receive and set client name
-    recv(clientSocket, name, sizeof(name), 0);
+    // receive and set client name (the client always sends MAX_LEN bytes)
+    memset(name, 0, sizeof(name));
+    if (recv(clientSocket, name, sizeof(name), MSG_WAITALL) <= 0)
+    {
+        endConnection(id);
+        return NULL;
+    }
+    name[MAX_LEN - 1] = '\0';
     set_name(id, name);
 
     // display welcome message
@@ -236,7 +285,7 @@ void *handleClient(void *arg)
     broadcastMessage(welcome_message, id);
     shared_print(welcome_message);
 
-    history_txt.push_back(welcome_message);
+    addHistory(welcome_message);
 
     while (true)
     {
@@ -251,7 +300,7 @@ void *handleClient(void *arg)
             shared_print(leave_message);
             endConnection(id);
 
-                history_txt.push_back(leave_message);
+            addHistory(leave_message);
 
             break;
         }
@@ -261,10 +310,9 @@ void *handleClient(void *arg)
         shared_print(message);
         broadcastMessage(message, id);
         
-        history_txt.push_back(message);
+        addHistory(message);
     }
 
-    pthread_exit(NULL);
     return NULL;
 }
 
@@ -302,7 +350,9 @@ void saveChatHistory(string directoryPath, vector<string> txt)
 string getCurrentTime()
 {
     time_t now = time(nullptr);
+    struct tm timeInfo;
+    localtime_r(&now, &timeInfo); // localtime isn't safe to call from multiple threads
     char buffer[64];
-    strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", localtime(&now));
+    strftime(buffer, sizeof(buffer), "[%Y-%m-%d %H:%M:%S]", &timeInfo);
     return string(buffer);
 }
