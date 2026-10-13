@@ -76,7 +76,7 @@ int main(int argc, char *argv[])
     struct sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(PORT);
-    serverAddress.sin_addr.s_addr = inet_addr("192.168.4.190");
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
     memset(&serverAddress.sin_zero, 0, sizeof(serverAddress.sin_zero));
 
     // bind the socket
