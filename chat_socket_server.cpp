@@ -37,8 +37,8 @@ int main(int argc, char *argv[])
     sockaddr_in servAddr;
     bzero((char*)&servAddr, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
-    servAddr.sin_addr.s_addr = INADDR_ANY; // refer to test_socket_server.cpp for def
-    servAddr.sin_port = htons(port); // refer to test_socket_server.cpp for def
+    servAddr.sin_addr.s_addr = INADDR_ANY; // accept connections on any network interface
+    servAddr.sin_port = htons(port); // convert the port to network byte order
 
     // open stream oriented socket with internet address
     // also keep track of socket descriptor
@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
     struct timeval start1, end1;
     gettimeofday(&start1, NULL);
     // also keep track of the amount of data sent as well
-    int bytesRead, bytesWritten = 0;
+    int bytesRead = 0, bytesWritten = 0;
     while (1)
     {
         // receive a message from the client (listen)

@@ -1,0 +1,5 @@
+# compiled programs
+chat_socket_server
+multiSC_socket_server
+multithreadP_socket_server
+*.dSYM/

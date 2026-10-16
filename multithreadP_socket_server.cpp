@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <fstream>
 #include <signal.h> // clean-up operations before termination
+#include <sys/stat.h>
 #include <mutex>
 #include <algorithm>
 
@@ -326,6 +327,7 @@ void saveChatHistory(string directoryPath, vector<string> txt)
     // have a new file_txtHistory.txt be created with the date of creation on it, as it always should be
     string fileName = "file_txtHistory" + timestamp + ".htxt";
 
+    mkdir(directoryPath.c_str(), 0755); // create the folder if it doesn't exist yet (fails harmlessly if it does)
     ofstream outfile(directoryPath + "/" + fileName);
 
     // catch error
