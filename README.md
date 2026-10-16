@@ -7,8 +7,8 @@ A collection of C++ TCP socket server programs exploring progressively more comp
 | File | Description |
 |------|-------------|
 | `chat_socket_server.cpp` | Interactive chat server — takes a port argument, accepts one client, bidirectional messaging with session stats |
-| `multiSC_socket_server.cpp` | Multi-client server using `std::thread` — listens on port 8080, spawns a thread per client and echoes messages back |
-| `multithreadP_socket_server.cpp` | Full chatroom server using pthreads — broadcasts messages to all connected clients, color-coded output, named users, chat history saved on exit |
+| `multiSC_socket_server.cpp` | Multi-client server using `std::thread` — listens on port 8080, spawns a thread per client, sends a welcome message, and echoes messages back |
+| `multithreadP_socket_server.cpp` | Full chatroom server using pthreads — one thread per client, mutex-protected shared state, relays messages to all other connected clients, color-coded output, named users, chat history saved on exit |
 
 ## Client-Server Pairing
 
@@ -43,13 +43,13 @@ Accepts one client. Type `exit` on either end to end the session. Prints bytes r
 ```bash
 ./multiSC_socket_server
 ```
-Accepts multiple clients concurrently. Echoes each message back to the sender.
+Accepts multiple clients concurrently. Sends each new client a welcome message, then echoes each message back to the sender.
 
 **multithreadP_socket_server** — pass a port number:
 ```bash
 ./multithreadP_socket_server 8080
 ```
-Full multi-user chatroom. Broadcasts all messages to every connected client. Press Ctrl+C to shut down and save chat history to `test_ChatHistory/`.
+Full multi-user chatroom. Each client gets its own thread, and the shared client list and chat history are protected with mutex locks, so users can join, chat, and leave at the same time. Each message is relayed to every other connected client. Messages are sent in fixed 200-byte packets, so the relayed line (timestamp, colored name, and text together) is capped at 199 bytes — long messages are cut shorter for other clients than in the server's console and saved history. Press Ctrl+C to shut down and save chat history to `test_ChatHistory/` inside the directory you started the server from (the folder is created if it doesn't exist).
 
 ## Requirements
 

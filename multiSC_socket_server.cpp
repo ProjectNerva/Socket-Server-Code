@@ -4,7 +4,7 @@
 #include <mutex>
 #include <cstring>
 #include <unistd.h>
-#include <arpa/inet>
+#include <arpa/inet.h>
 
 // Constants
 #define PORT 8080
